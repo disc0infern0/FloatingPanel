@@ -7,15 +7,12 @@
 
 
 
-import SwiftUI
-@MainActor
-struct FloatingPanelPositionStore {
-    private static var sessionFrames: [String: CGRect] = [:]
-    private let id: String
+import CoreGraphics // for CGRect definition
 
-    init(id: String) {
-        self.id = id
-    }
+@MainActor
+struct FloatingPanelPositionStore: Identifiable {
+    let id: String
+    private static var sessionFrames: [String: CGRect] = [:]
 
     func save(frame: CGRect) {
         Self.sessionFrames[id] = frame

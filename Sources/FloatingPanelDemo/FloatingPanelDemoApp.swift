@@ -16,20 +16,36 @@ struct FloatingPanelDemoApp: App {
 @available(macOS 13.0, *)
 struct DemoContentView: View {
     @State private var isPanelPresented = false
+    @State private var selectedStyle: FloatingPanelStyle.AnimationOptions = .both
+    @State private var useCustomDefaultSize = true
+
+    @State var panelStyle: FloatingPanelStyle = .noAnimation
+
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("FloatingPanel Demo")
+            Text("FloatingPanel Demo\n")
                 .font(.title2)
-            Text("Use the toolbar button to toggle the floating panel.")
+            Text("Use the toolbar button to toggle the floating panel and try animation style presets.")
                 .foregroundColor(.secondary)
+            Picker("Style", selection: $selectedStyle) {
+                ForEach(FloatingPanelStyle.AnimationOptions.allCases) { style in
+                    Text(style.rawValue.capitalized).tag(style)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Toggle("Use custom default size", isOn: $useCustomDefaultSize)
+                .toggleStyle(.checkbox)
             HStack {
                 Button("Close Panel (state variable)") {
                     isPanelPresented = false
                 }
                 .disabled(isPanelPresented == false)
             }
+
         }
+        .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -39,20 +55,21 @@ struct DemoContentView: View {
                     Label("Toggle Panel", systemImage: "rectangle.topthird.inset.filled")
                 }
             }
+            
         }
-        .floatingPanel(isPresented: $isPanelPresented,
-                       defaultSize: .init(width: 200, height: 500),
-                       animationDuration: 0.98,
-                       allowResize: false) {
+        .floatingPanel(
+            isPresented: $isPanelPresented,
+            defaultSize: useCustomDefaultSize ? .init(width: 260, height: 360) : nil,
+            allowResize: false
+        ) {
             PanelContent(isPanelPresented: $isPanelPresented)
         }
-        .task(id: isPanelPresented) {
-            guard isPanelPresented == true else { return }
-            try? await Task.sleep(for: .seconds(5))
-            isPanelPresented = false
-        }
+        .floatingPanelStyle(FloatingPanelStyle(animationOptions: selectedStyle, animationDuration: 1.0 ))
+
     }
 }
+
+
 
 @available(macOS 13.0, *)
 private struct PanelContent: View {
@@ -79,6 +96,11 @@ private struct PanelContent: View {
                 .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 8)
+        }
+        .task(id: isPanelPresented) {
+            guard isPanelPresented == true else { return }
+            try? await Task.sleep(for: .seconds(5))
+            isPanelPresented = false
         }
     }
 }

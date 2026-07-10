@@ -1,12 +1,14 @@
 import SwiftUI
 import AppKit
 
+/// Create a macOS Panel window
+/// Since NSPanel is AppKit only, we set the panel content to be an NSHostingView with the SwiftUI content passed to it.
 
 @MainActor
 public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     let panelID: String
     let defaultSize: CGSize
-    let animationDuration: TimeInterval
+    let style: FloatingPanelStyle
     let allowResize: Bool
     let positionStore: FloatingPanelPositionStore
     @Binding var sourceViewFrameInScreen: CGRect?
@@ -19,7 +21,7 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     public init(
         id: String,
         defaultSize: CGSize = CGSize(width: 360, height: 320),
-        animationDuration: TimeInterval = 0.18,
+        style: FloatingPanelStyle = .default,
         allowResize: Bool = true,
         sourceViewFrameInScreen: Binding<CGRect?> = .constant(nil),
         presentationAnchorInSourceView: Binding<CGPoint?> = .constant(nil),
@@ -28,7 +30,7 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     ) {
         self.panelID = id
         self.defaultSize = defaultSize
-        self.animationDuration = animationDuration
+        self.style = style
         self.allowResize = allowResize
         self.positionStore = FloatingPanelPositionStore(id: id)
         self._sourceViewFrameInScreen = sourceViewFrameInScreen

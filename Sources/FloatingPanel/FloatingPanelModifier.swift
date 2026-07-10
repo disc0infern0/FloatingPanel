@@ -11,10 +11,15 @@ import AsyncAlgorithms
 
 /// The public interface of how a floating panel is displayed
 public extension View {
+    /// Presents a floating panel anchored to this view.
+    /// - Parameters:
+    ///   - isPresented: Controls panel presentation.
+    ///   - defaultSize: Initial panel size. Uses the package default when `nil`.
+    ///   - allowResize: Whether the panel can be resized by the user.
+    ///   - content: Panel content view builder.
     func floatingPanel<PanelContent: View>(
         isPresented: Binding<Bool>,
-        defaultSize: CGSize = CGSize(width: 360, height: 320),
-        animationDuration: TimeInterval = 0.18,
+        defaultSize: CGSize? = nil,
         allowResize: Bool = true,
         @ViewBuilder content: @escaping () -> PanelContent
     ) -> some View {
@@ -22,7 +27,6 @@ public extension View {
             FloatingPanelModifier(
                 isPresented: isPresented,
                 defaultSize: defaultSize,
-                animationDuration: animationDuration,
                 allowResize: allowResize,
                 panelContent: content
             )
@@ -32,9 +36,10 @@ public extension View {
 
 /// The view modifier that makes all the magic happen.
 private struct FloatingPanelModifier<PanelContent: View>: ViewModifier {
+    @Environment(\.floatingPanelStyle) private var floatingPanelStyle
+    let id: String = UUID().uuidString
     @Binding var isPresented: Bool
-    let defaultSize: CGSize
-    let animationDuration: TimeInterval
+    let defaultSize: CGSize?
     let allowResize: Bool
     let panelContent: () -> PanelContent
 
@@ -61,6 +66,10 @@ private struct FloatingPanelModifier<PanelContent: View>: ViewModifier {
                     panel?.present()
                 }
             }
+            .onChange(of: floatingPanelStyle) {
+                panel = nil
+                panel = makePanel()
+            }
             .onChange(of: isPresented) { _, shouldPresent in
                 guard let panel else { return }
                 if shouldPresent {
@@ -79,12 +88,14 @@ private struct FloatingPanelModifier<PanelContent: View>: ViewModifier {
 
 
     private func makePanel() -> FloatingPanel<PanelContent> {
-        let panelID = "FloatingPanel.Default"
+//        let panelID = "FloatingPanel.Default"
         let isPresented = _isPresented
+        let resolvedDefaultSize = defaultSize ?? CGSize(width: 360, height: 320)
         return FloatingPanel(
-            id: panelID,
-            defaultSize: defaultSize,
-            animationDuration: animationDuration,
+//            id: panelID,
+            id: id,
+            defaultSize: resolvedDefaultSize,
+            style: floatingPanelStyle,
             allowResize: allowResize,
             sourceViewFrameInScreen: $sourceViewFrameInScreen,
             presentationAnchorInSourceView: $presentationAnchorInSourceView,

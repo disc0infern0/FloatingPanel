@@ -63,22 +63,26 @@ extension FloatingPanel  {
         setFrame(startFrame, display: true)
         orderFrontRegardless()
 
-        guard animationDuration > 0 else {
+        guard style.animatesOnOpen, style.animationDuration > 0 else {
             alphaValue = 1
             setFrame(finalFrame, display: true)
             isAnimatingPresentation = false
             return
         }
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = animationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            context.completionHandler = { [weak self] in
-                self?.isAnimatingPresentation = false
+        let runAnimation = { [weak self] in
+            guard let self else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = self.style.animationDuration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.completionHandler = { [weak self] in
+                    self?.isAnimatingPresentation = false
+                }
+                self.animator().alphaValue = 1
+                self.animator().setFrame(finalFrame, display: true)
             }
-            animator().alphaValue = 1
-            animator().setFrame(finalFrame, display: true)
         }
+        runAnimation()
     }
 
     private func animateClose() {
@@ -88,7 +92,7 @@ extension FloatingPanel  {
         let anchor = resolvedSourceAnchorInScreen ?? lastPresentationAnchor ?? NSEvent.mouseLocation
         let endFrame = CGRect(x: anchor.x, y: anchor.y, width: 1, height: 1)
 
-        guard animationDuration > 0 else {
+        guard style.animatesOnClose, style.animationDuration > 0 else {
             alphaValue = 0
             setFrame(endFrame, display: true)
             orderOut(nil)
@@ -98,22 +102,26 @@ extension FloatingPanel  {
             return
         }
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = animationDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            context.completionHandler = { [weak self] in
-                guard let self else { return }
-                self.alphaValue = 0
-                self.orderOut(nil)
-                self.alphaValue = 1
-                self.isAnimatingClose = false
-                self.onPanelClose?()
-            }
+        let runAnimation = { [weak self] in
+            guard let self else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = self.style.animationDuration
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                context.completionHandler = { [weak self] in
+                    guard let self else { return }
+                    self.alphaValue = 0
+                    self.orderOut(nil)
+                    self.alphaValue = 1
+                    self.isAnimatingClose = false
+                    self.onPanelClose?()
+                }
 
-            // Keep the panel more visible until late in the close animation.
-            animator().alphaValue = 0.18
-            animator().setFrame(endFrame, display: true)
+                // Keep the panel more visible until late in the close animation.
+                self.animator().alphaValue = 0.18
+                self.animator().setFrame(endFrame, display: true)
+            }
         }
+        runAnimation()
     }
 
     /// Stop the animation triggering storage of intermediate frame sizes
