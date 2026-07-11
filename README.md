@@ -1,6 +1,7 @@
 # FloatingPanel
 
 `FloatingPanel` is a SwiftUI modifier for macOS that presents a movable, resizable floating utility panel.
+v 1.0.0
 
 ## Overview
 
