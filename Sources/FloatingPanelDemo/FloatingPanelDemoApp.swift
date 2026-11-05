@@ -1,7 +1,6 @@
 import SwiftUI
 import FloatingPanel
 
-@available(macOS 13.0, *)
 @main
 struct FloatingPanelDemoApp: App {
 
@@ -9,17 +8,17 @@ struct FloatingPanelDemoApp: App {
         WindowGroup {
             DemoContentView()
         }
+#if os(macOS)
         .windowToolbarStyle(.unified)
+#endif
     }
 }
 
-@available(macOS 13.0, *)
 struct DemoContentView: View {
     @State private var isPanelPresented = false
     @State private var selectedStyle: FloatingPanelStyle.AnimationOptions = .both
     @State private var useCustomDefaultSize = true
-
-    @State var panelStyle: FloatingPanelStyle = .noAnimation
+    @State private var allowMove = true
 
 
     var body: some View {
@@ -36,7 +35,13 @@ struct DemoContentView: View {
             .pickerStyle(.segmented)
 
             Toggle("Use custom default size", isOn: $useCustomDefaultSize)
+#if os(macOS)
                 .toggleStyle(.checkbox)
+#endif
+            Toggle("Allow moving", isOn: $allowMove)
+#if os(macOS)
+                .toggleStyle(.checkbox)
+#endif
             HStack {
                 Button("Close Panel (state variable)") {
                     isPanelPresented = false
@@ -55,11 +60,12 @@ struct DemoContentView: View {
                     Label("Toggle Panel", systemImage: "rectangle.topthird.inset.filled")
                 }
             }
-            
+
         }
         .floatingPanel(
             isPresented: $isPanelPresented,
             defaultSize: useCustomDefaultSize ? .init(width: 260, height: 360) : nil,
+            allowMove: allowMove,
             allowResize: false
         ) {
             PanelContent(isPanelPresented: $isPanelPresented)
@@ -71,7 +77,6 @@ struct DemoContentView: View {
 
 
 
-@available(macOS 13.0, *)
 private struct PanelContent: View {
     @Binding var isPanelPresented: Bool
 

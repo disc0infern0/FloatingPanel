@@ -18,12 +18,7 @@ public struct FloatingPanelUsageExampleView: View {
                 .foregroundColor(.secondary)
         }
         .padding(24)
-        .floatingPanelStyle(
-            FloatingPanelStyle(
-                animationOptions: .both,
-                animationDuration: 0.24
-            )
-        )
+        .floatingPanelStyle( .init( animationOptions: .both, animationDuration: 0.24 ) )
         .floatingPanel(isPresented: $isPanelPresented) {
             ExamplePanelContent(isPresented: $isPanelPresented)
         }

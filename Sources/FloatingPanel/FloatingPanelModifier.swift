@@ -6,8 +6,13 @@
 //
 
 import SwiftUI
-import AppKit
 import AsyncAlgorithms
+
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 /// The public interface of how a floating panel is displayed
 public extension View {
@@ -15,11 +20,13 @@ public extension View {
     /// - Parameters:
     ///   - isPresented: Controls panel presentation.
     ///   - defaultSize: Initial panel size. Uses the package default when `nil`.
+    ///   - allowMove: Whether the panel can be moved by the user.
     ///   - allowResize: Whether the panel can be resized by the user.
     ///   - content: Panel content view builder.
     func floatingPanel<PanelContent: View>(
         isPresented: Binding<Bool>,
         defaultSize: CGSize? = nil,
+        allowMove: Bool = true,
         allowResize: Bool = true,
         @ViewBuilder content: @escaping () -> PanelContent
     ) -> some View {
@@ -27,6 +34,7 @@ public extension View {
             FloatingPanelModifier(
                 isPresented: isPresented,
                 defaultSize: defaultSize,
+                allowMove: allowMove,
                 allowResize: allowResize,
                 panelContent: content
             )
@@ -34,25 +42,66 @@ public extension View {
     }
 }
 
-/// The view modifier that makes all the magic happen.
+/// Routes the shared floating panel API to the platform-specific backend.
 private struct FloatingPanelModifier<PanelContent: View>: ViewModifier {
-    @Environment(\.floatingPanelStyle) private var floatingPanelStyle
     let id: String = UUID().uuidString
     @Binding var isPresented: Bool
     let defaultSize: CGSize?
+    let allowMove: Bool
     let allowResize: Bool
     let panelContent: () -> PanelContent
+
+    func body(content: Content) -> some View {
+#if os(macOS)
+        content.modifier(
+            MacFloatingPanelModifier(
+                id: id,
+                isPresented: $isPresented,
+                defaultSize: defaultSize,
+                allowMove: allowMove,
+                allowResize: allowResize,
+                panelContent: panelContent
+            )
+        )
+#elseif os(iOS)
+        content.modifier(
+            IOSFloatingPanelModifier(
+                id: id,
+                isPresented: $isPresented,
+                defaultSize: defaultSize,
+                allowMove: allowMove,
+                allowResize: allowResize,
+                panelContent: panelContent
+            )
+        )
+#else
+        content
+#endif
+    }
+}
+
+#if os(macOS)
+/// macOS backend: hosts the panel in an `NSPanel` window.
+private struct MacFloatingPanelModifier<PanelContent: View>: ViewModifier {
+    let id: String
+    @Binding var isPresented: Bool
+    let defaultSize: CGSize?
+    let allowMove: Bool
+    let allowResize: Bool
+    let panelContent: () -> PanelContent
+
+    @Environment(\.floatingPanelStyle) private var floatingPanelStyle
 
     @State private var panel: FloatingPanel<PanelContent>?
     @State private var sourceViewFrameInScreen: CGRect?
     @State private var presentationAnchorInSourceView: CGPoint?
-    @State private var frameEmitter = AsyncEmitter<CGRect?>()
+    @State private var frameChannel = AsyncChannel<CGRect?>()
 
     func body(content: Content) -> some View {
         content
             .background(
-                /// Match the geomtry of content with an AppKit view that reports its frame updates into `frameEmitter`.
-                SourceViewFrameReader(frameEmitter: frameEmitter)
+                /// Match the geometry of content with an AppKit view that reports its frame updates into `frameChannel`.
+                SourceViewFrameReader(frameChannel: frameChannel)
             )
             .task {
                 await consumeFrameUpdates()
@@ -86,16 +135,14 @@ private struct FloatingPanelModifier<PanelContent: View>: ViewModifier {
             }
     }
 
-
     private func makePanel() -> FloatingPanel<PanelContent> {
-//        let panelID = "FloatingPanel.Default"
         let isPresented = _isPresented
         let resolvedDefaultSize = defaultSize ?? CGSize(width: 360, height: 320)
         return FloatingPanel(
-//            id: panelID,
             id: id,
             defaultSize: resolvedDefaultSize,
             style: floatingPanelStyle,
+            allowMove: allowMove,
             allowResize: allowResize,
             sourceViewFrameInScreen: $sourceViewFrameInScreen,
             presentationAnchorInSourceView: $presentationAnchorInSourceView,
@@ -109,7 +156,6 @@ private struct FloatingPanelModifier<PanelContent: View>: ViewModifier {
     }
 
     /// Anchor updates needed for the close animation to go into the right place
-    ///
     private func capturePresentationAnchor() {
         guard let frame = sourceViewFrameInScreen else {
             presentationAnchorInSourceView = nil
@@ -126,9 +172,101 @@ private struct FloatingPanelModifier<PanelContent: View>: ViewModifier {
     /// Debounces frame updates before writing SwiftUI state.
     @MainActor
     private func consumeFrameUpdates() async {
-        for await frameInScreen in frameEmitter.values.debounce(for: .milliseconds(42)) {
+        for await frameInScreen in frameChannel.debounce(for: .milliseconds(42)) {
             guard sourceViewFrameInScreen != frameInScreen else { continue }
             sourceViewFrameInScreen = frameInScreen
         }
     }
 }
+#endif
+
+#if os(iOS)
+/// iPadOS backend: hosts the panel in a `UIWindow` — the UIKit equivalent of
+/// the macOS `NSPanel`. The window is draggable over the whole scene, including
+/// outside the bounds of the view that presented it.
+private struct IOSFloatingPanelModifier<PanelContent: View>: ViewModifier {
+    let id: String
+    @Binding var isPresented: Bool
+    let defaultSize: CGSize?
+    let allowMove: Bool
+    let allowResize: Bool
+    let panelContent: () -> PanelContent
+
+    @Environment(\.floatingPanelStyle) private var floatingPanelStyle
+
+    @State private var panel: FloatingPanel<PanelContent>?
+    @State private var sourceViewFrameInWindow: CGRect?
+    @State private var presentationAnchorInWindow: CGPoint?
+    @State private var frameChannel = AsyncChannel<CGRect?>()
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                /// Reports the source view's frame in window coordinates.
+                SourceViewFrameReader(frameChannel: frameChannel)
+            )
+            .task {
+                await consumeFrameUpdates()
+            }
+            .onAppear {
+                if panel == nil {
+                    panel = makePanel()
+                }
+                if isPresented {
+                    panel?.present()
+                }
+            }
+            .onChange(of: floatingPanelStyle) {
+                panel = nil
+                panel = makePanel()
+            }
+            .onChange(of: isPresented) { _, shouldPresent in
+                guard let panel else { return }
+                if shouldPresent {
+                    if !panel.isPresented {
+                        panel.present()
+                    }
+                } else if panel.isPresented {
+                    panel.dismiss()
+                }
+            }
+            .onDisappear {
+                panel?.dismiss()
+            }
+    }
+
+    private func makePanel() -> FloatingPanel<PanelContent>? {
+        guard let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else {
+            return nil
+        }
+
+        let isPresented = _isPresented
+        let resolvedDefaultSize = defaultSize ?? CGSize(width: 360, height: 320)
+        return FloatingPanel(
+            windowScene: windowScene,
+            id: id,
+            defaultSize: resolvedDefaultSize,
+            style: floatingPanelStyle,
+            allowMove: allowMove,
+            allowResize: allowResize,
+            sourceViewFrameInWindow: $sourceViewFrameInWindow,
+            presentationAnchorInWindow: $presentationAnchorInWindow,
+            onClose: {
+                if isPresented.wrappedValue {
+                    isPresented.wrappedValue = false
+                }
+            },
+            content: panelContent
+        )
+    }
+
+    /// Debounces frame updates before writing SwiftUI state.
+    @MainActor
+    private func consumeFrameUpdates() async {
+        for await frameInWindow in frameChannel.debounce(for: .milliseconds(42)) {
+            guard sourceViewFrameInWindow != frameInWindow else { continue }
+            sourceViewFrameInWindow = frameInWindow
+        }
+    }
+}
+#endif

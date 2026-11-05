@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import AppKit
 
@@ -9,8 +10,8 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     let panelID: String
     let defaultSize: CGSize
     let style: FloatingPanelStyle
+    let allowMove: Bool
     let allowResize: Bool
-    let positionStore: FloatingPanelPositionStore
     @Binding var sourceViewFrameInScreen: CGRect?
     @Binding var presentationAnchorInSourceView: CGPoint?
     var lastPresentationAnchor: CGPoint?
@@ -22,6 +23,7 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
         id: String,
         defaultSize: CGSize = CGSize(width: 360, height: 320),
         style: FloatingPanelStyle = .default,
+        allowMove: Bool = true,
         allowResize: Bool = true,
         sourceViewFrameInScreen: Binding<CGRect?> = .constant(nil),
         presentationAnchorInSourceView: Binding<CGPoint?> = .constant(nil),
@@ -31,8 +33,8 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
         self.panelID = id
         self.defaultSize = defaultSize
         self.style = style
+        self.allowMove = allowMove
         self.allowResize = allowResize
-        self.positionStore = FloatingPanelPositionStore(id: id)
         self._sourceViewFrameInScreen = sourceViewFrameInScreen
         self._presentationAnchorInSourceView = presentationAnchorInSourceView
         self.onPanelClose = onClose
@@ -49,6 +51,7 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
             defer: false
         )
 
+        setFrameUsingName(id)
         isFloatingPanel = true
         level = .floating
         hidesOnDeactivate = false
@@ -56,7 +59,8 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
         collectionBehavior = [.transient, .moveToActiveSpace]
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
-        isMovableByWindowBackground = true
+        isMovableByWindowBackground = allowMove
+        isMovable = allowMove
         standardWindowButton(.closeButton)?.isHidden = true
         standardWindowButton(.miniaturizeButton)?.isHidden = true
         standardWindowButton(.zoomButton)?.isHidden = true
@@ -115,3 +119,4 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
         // Only key-resign should trigger dismissal.
     }
 }
+#endif

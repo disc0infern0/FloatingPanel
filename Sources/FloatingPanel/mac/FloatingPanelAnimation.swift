@@ -7,6 +7,7 @@
 
 
 
+#if os(macOS)
 import SwiftUI
 extension FloatingPanel  {
     
@@ -27,8 +28,9 @@ extension FloatingPanel  {
     }
 
     private func resolvedFrame(anchor: CGPoint) -> CGRect {
-        if let storedFrame = positionStore.loadFrame() {
-            return clampToVisibleScreen(storedFrame, anchor: anchor)
+        // `setFrameUsingName` was already applied in init, so `frame` here reflects a restored frame if one exists.
+        if frame.origin != .zero || frame.size != defaultSize {
+            return clampToVisibleScreen(frame, anchor: anchor)
         }
 
         let proposedOrigin = CGPoint(
@@ -129,6 +131,7 @@ extension FloatingPanel  {
         guard isVisible, !isAnimatingPresentation, !isAnimatingClose else { return }
         guard frame.width >= minSize.width, frame.height >= minSize.height else { return }
         guard frame.origin.x.isFinite, frame.origin.y.isFinite, frame.width.isFinite, frame.height.isFinite else { return }
-        positionStore.save(frame: frame)
+        saveFrame(usingName: panelID)
     }
 }
+#endif
