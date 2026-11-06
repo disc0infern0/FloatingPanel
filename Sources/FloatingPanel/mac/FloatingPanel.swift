@@ -12,6 +12,7 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     let style: FloatingPanelStyle
     let allowMove: Bool
     let allowResize: Bool
+    let autoSizeToContent: Bool
     @Binding var sourceViewFrameInScreen: CGRect?
     @Binding var presentationAnchorInSourceView: CGPoint?
     var lastPresentationAnchor: CGPoint?
@@ -25,6 +26,7 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
         style: FloatingPanelStyle = .default,
         allowMove: Bool = true,
         allowResize: Bool = true,
+        autoSizeToContent: Bool = false,
         sourceViewFrameInScreen: Binding<CGRect?> = .constant(nil),
         presentationAnchorInSourceView: Binding<CGPoint?> = .constant(nil),
         onClose: (() -> Void)? = nil,
@@ -35,6 +37,7 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
         self.style = style
         self.allowMove = allowMove
         self.allowResize = allowResize
+        self.autoSizeToContent = autoSizeToContent
         self._sourceViewFrameInScreen = sourceViewFrameInScreen
         self._presentationAnchorInSourceView = presentationAnchorInSourceView
         self.onPanelClose = onClose
@@ -71,7 +74,20 @@ public final class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
         let rootView = content()
             .ignoresSafeArea(SafeAreaRegions.all)
 
-        contentView = NSHostingView(rootView: rootView)
+        if autoSizeToContent {
+            contentView = NSHostingView(
+                rootView: AnyView(
+                    FloatingPanelContentSizer<AnyView>(
+                        content: { AnyView(rootView) },
+                        onSizeChange: { [weak self] in
+                            self?.resizeToFitContent()
+                        }
+                    )
+                )
+            )
+        } else {
+            contentView = NSHostingView(rootView: rootView)
+        }
 
         delegate = self
     }

@@ -112,6 +112,25 @@ struct DebouncePipelineTests {
     }
 }
 
+@MainActor
+@Suite("FloatingPanel Sizing")
+struct FloatingPanelSizingTests {
+    @Test("window size takes the larger of reported and fitting per axis")
+    func takesTheLarger() {
+        let panel = CGSize(width: 360, height: 696)
+        #expect(FloatingPanelSizing.windowSize(reporting: panel, fitting: panel) == panel)
+        #expect(FloatingPanelSizing.windowSize(reporting: CGSize(width: 360, height: 400), fitting: panel) == panel)
+        #expect(FloatingPanelSizing.windowSize(reporting: panel, fitting: .zero) == panel)
+    }
+
+    @Test("drag strip height meets the 44-pt minimum")
+    func dragStripHeight() {
+        #expect(FloatingPanelSizing.dragStripHeight == 44)
+    }
+}
+
+private struct EmptyView: View { var body: some View { EmptyView() } }
+
 #if os(macOS)
 @MainActor
 @Suite("FloatingPanel")

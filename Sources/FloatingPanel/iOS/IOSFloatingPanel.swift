@@ -13,6 +13,7 @@ public final class FloatingPanel<Content: View>: UIWindow {
     let style: FloatingPanelStyle
     let allowMove: Bool
     let allowResize: Bool
+    let autoSizeToContent: Bool
     @Binding var sourceViewFrameInWindow: CGRect?
     @Binding var presentationAnchorInWindow: CGPoint?
     var lastPresentationAnchor: CGPoint?
@@ -36,6 +37,7 @@ public final class FloatingPanel<Content: View>: UIWindow {
         style: FloatingPanelStyle = .default,
         allowMove: Bool = true,
         allowResize: Bool = true,
+        autoSizeToContent: Bool = false,
         sourceViewFrameInWindow: Binding<CGRect?> = .constant(nil),
         presentationAnchorInWindow: Binding<CGPoint?> = .constant(nil),
         onClose: (() -> Void)? = nil,
@@ -46,6 +48,7 @@ public final class FloatingPanel<Content: View>: UIWindow {
         self.style = style
         self.allowMove = allowMove
         self.allowResize = allowResize
+        self.autoSizeToContent = autoSizeToContent
         self._sourceViewFrameInWindow = sourceViewFrameInWindow
         self._presentationAnchorInWindow = presentationAnchorInWindow
         self.onPanelClose = onClose
@@ -55,7 +58,26 @@ public final class FloatingPanel<Content: View>: UIWindow {
         windowLevel = .normal + 1
         backgroundColor = .clear
 
-        let hostingController: UIHostingController<AnyView> = UIHostingController(rootView: AnyView(content().ignoresSafeArea(SafeAreaRegions.all)))
+        let stripInset: CGFloat = allowMove ? FloatingPanelSizing.dragStripHeight : 0
+        let baseContent = AnyView(
+            content()
+                .ignoresSafeArea(SafeAreaRegions.all)
+                .padding(.top, stripInset)
+        )
+        let rootView: AnyView
+        if autoSizeToContent {
+            rootView = AnyView(
+                FloatingPanelContentSizer<AnyView>(
+                    content: { baseContent },
+                    onSizeChange: { [weak self] in
+                        self?.resizeToFitContent()
+                    }
+                )
+            )
+        } else {
+            rootView = baseContent
+        }
+        let hostingController: UIHostingController<AnyView> = UIHostingController(rootView: rootView)
         hostingController.view.backgroundColor = .clear
         rootViewController = hostingController
         self.hostingController = hostingController
@@ -115,6 +137,17 @@ public final class FloatingPanel<Content: View>: UIWindow {
         makeKeyAndVisible()
 
         animatePresentation(from: anchor, to: targetFrame)
+
+        if autoSizeToContent {
+            // Defer past the open animation: resizeToFitContent bails while animating.
+            let delay = style.animatesOnOpen ? style.animationDuration : 0
+            Task { @MainActor [weak self] in
+                if delay > 0 {
+                    try? await Task.sleep(for: .seconds(delay))
+                }
+                self?.resizeToFitContent()
+            }
+        }
     }
 
     public func dismiss() {
@@ -225,6 +258,25 @@ public final class FloatingPanel<Content: View>: UIWindow {
         Self.saveFrame(frame, panelID: panelID)
     }
 
+    /// Resizes the panel to fit its content, keeping the origin (top edge) still.
+    ///
+    /// UIKit origin is top-left, so no origin adjustment is needed to hold the top.
+    /// No-ops while animating, matching `persistFrameIfAppropriate`.
+    func resizeToFitContent() {
+        guard autoSizeToContent, !isHidden, !isAnimatingPresentation, !isAnimatingClose else { return }
+        guard let hostingController else { return }
+
+        hostingController.view.layoutIfNeeded()
+        let fitting = hostingController.sizeThatFits(in: CGSize(width: frame.width, height: .greatestFiniteMagnitude))
+        let target = FloatingPanelSizing.windowSize(reporting: frame.size, fitting: fitting)
+        guard target != frame.size else { return }
+
+        let newFrame = clampToVisible(CGRect(origin: frame.origin, size: target), anchor: CGPoint(x: frame.midX, y: frame.minY))
+        guard newFrame.size != frame.size || newFrame.origin != frame.origin else { return }
+        frame = newFrame
+        Self.saveFrame(frame, panelID: panelID)
+    }
+
     // MARK: - Frame persistence (UIKit counterpart of `setFrameUsingName`)
 
     private static func restoredFrame(_ panelID: String) -> CGRect? {
@@ -268,12 +320,28 @@ public final class FloatingPanel<Content: View>: UIWindow {
             let handle = UIView()
             handle.backgroundColor = .clear
             handle.translatesAutoresizingMaskIntoConstraints = false
+            handle.accessibilityLabel = "Drag to move"
+            handle.isAccessibilityElement = true
             hostingController.view.addSubview(handle)
             NSLayoutConstraint.activate([
                 handle.topAnchor.constraint(equalTo: hostingController.view.topAnchor),
                 handle.leadingAnchor.constraint(equalTo: hostingController.view.leadingAnchor),
-                handle.trailingAnchor.constraint(equalTo: hostingController.view.trailingAnchor, constant: -44),
-                handle.heightAnchor.constraint(equalToConstant: 36)
+                handle.trailingAnchor.constraint(equalTo: hostingController.view.trailingAnchor),
+                handle.heightAnchor.constraint(equalToConstant: FloatingPanelSizing.dragStripHeight)
+            ])
+            // Visible Liquid Glass-ish grabber centred in the strip.
+            let pill = UIView()
+            pill.backgroundColor = .systemGray3
+            pill.alpha = 0.6
+            pill.layer.cornerRadius = 2.5
+            pill.translatesAutoresizingMaskIntoConstraints = false
+            pill.isUserInteractionEnabled = false
+            handle.addSubview(pill)
+            NSLayoutConstraint.activate([
+                pill.centerXAnchor.constraint(equalTo: handle.centerXAnchor),
+                pill.centerYAnchor.constraint(equalTo: handle.centerYAnchor),
+                pill.widthAnchor.constraint(equalToConstant: 40),
+                pill.heightAnchor.constraint(equalToConstant: 5)
             ])
             let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
             handle.addGestureRecognizer(pan)

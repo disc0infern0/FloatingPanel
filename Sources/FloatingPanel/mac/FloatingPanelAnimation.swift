@@ -21,6 +21,17 @@ extension FloatingPanel  {
         makeKey()
 
         animatePresentation(from: anchor, to: targetFrame)
+
+        if autoSizeToContent {
+            // Defer past the open animation: resizeToFitContent bails while animating.
+            let delay = style.animatesOnOpen ? style.animationDuration : 0
+            Task { @MainActor [weak self] in
+                if delay > 0 {
+                    try? await Task.sleep(for: .seconds(delay))
+                }
+                self?.resizeToFitContent()
+            }
+        }
     }
 
     public func dismiss() {
@@ -131,6 +142,33 @@ extension FloatingPanel  {
         guard isVisible, !isAnimatingPresentation, !isAnimatingClose else { return }
         guard frame.width >= minSize.width, frame.height >= minSize.height else { return }
         guard frame.origin.x.isFinite, frame.origin.y.isFinite, frame.width.isFinite, frame.height.isFinite else { return }
+        saveFrame(usingName: panelID)
+    }
+
+    /// Resizes the panel to fit its content, holding the top edge still.
+    ///
+    /// No-ops while animating, matching `persistFrameIfAppropriate`: mid-transition
+    /// frame sizes are the animation's, not the content's.
+    func resizeToFitContent() {
+        guard autoSizeToContent, isVisible, !isAnimatingPresentation, !isAnimatingClose else { return }
+        guard let contentView else { return }
+
+        contentView.layoutSubtreeIfNeeded()
+        let fitting = contentView.fittingSize
+        let target = FloatingPanelSizing.windowSize(reporting: frame.size, fitting: fitting)
+        guard target != frame.size else { return }
+
+        let old = frame
+        // AppKit origin is bottom-left; moving the origin up by the height delta
+        // keeps the top edge (and the control that triggered the panel) still.
+        var newFrame = NSRect(origin: CGPoint(x: old.origin.x, y: old.origin.y + old.height - target.height), size: target)
+        newFrame = clampToVisibleScreen(newFrame, anchor: NSPoint(x: newFrame.midX, y: newFrame.maxY))
+        // Clamping can shrink the panel to the visible area; re-derive height
+        // target so a clamped panel does not report itself as fitting.
+        guard newFrame.size != old.size || newFrame.origin != old.origin else { return }
+        // If clamping shrank the size, keep the top edge but re-clamp origin.
+        newFrame.origin.y = max(newFrame.origin.y, NSScreen.main?.visibleFrame.minY ?? newFrame.origin.y)
+        setFrame(newFrame, display: true)
         saveFrame(usingName: panelID)
     }
 }

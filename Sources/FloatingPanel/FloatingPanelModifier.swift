@@ -18,24 +18,32 @@ import UIKit
 public extension View {
     /// Presents a floating panel anchored to this view.
     /// - Parameters:
+    ///   - id: Stable identifier for the panel's frame persistence. When `nil`,
+    ///     a random ID is generated once for the lifetime of this view.
     ///   - isPresented: Controls panel presentation.
     ///   - defaultSize: Initial panel size. Uses the package default when `nil`.
     ///   - allowMove: Whether the panel can be moved by the user.
     ///   - allowResize: Whether the panel can be resized by the user.
+    ///   - autoSizeToContent: When `true`, the panel resizes to fit its content
+    ///     (top-edge anchored) instead of staying at `defaultSize`.
     ///   - content: Panel content view builder.
     func floatingPanel<PanelContent: View>(
+        id: String? = nil,
         isPresented: Binding<Bool>,
         defaultSize: CGSize? = nil,
         allowMove: Bool = true,
         allowResize: Bool = true,
+        autoSizeToContent: Bool = false,
         @ViewBuilder content: @escaping () -> PanelContent
     ) -> some View {
         modifier(
             FloatingPanelModifier(
+                suppliedID: id,
                 isPresented: isPresented,
                 defaultSize: defaultSize,
                 allowMove: allowMove,
                 allowResize: allowResize,
+                autoSizeToContent: autoSizeToContent,
                 panelContent: content
             )
         )
@@ -44,33 +52,41 @@ public extension View {
 
 /// Routes the shared floating panel API to the platform-specific backend.
 private struct FloatingPanelModifier<PanelContent: View>: ViewModifier {
-    let id: String = UUID().uuidString
+    let suppliedID: String?
+    @State private var generatedID = UUID().uuidString
     @Binding var isPresented: Bool
     let defaultSize: CGSize?
     let allowMove: Bool
     let allowResize: Bool
+    let autoSizeToContent: Bool
     let panelContent: () -> PanelContent
+
+    /// The ID actually used for frame persistence: the caller's if supplied,
+    /// otherwise one generated for the lifetime of this modifier.
+    private var resolvedID: String { suppliedID ?? generatedID }
 
     func body(content: Content) -> some View {
 #if os(macOS)
         content.modifier(
             MacFloatingPanelModifier(
-                id: id,
+                id: resolvedID,
                 isPresented: $isPresented,
                 defaultSize: defaultSize,
                 allowMove: allowMove,
                 allowResize: allowResize,
+                autoSizeToContent: autoSizeToContent,
                 panelContent: panelContent
             )
         )
 #elseif os(iOS)
         content.modifier(
             IOSFloatingPanelModifier(
-                id: id,
+                id: resolvedID,
                 isPresented: $isPresented,
                 defaultSize: defaultSize,
                 allowMove: allowMove,
                 allowResize: allowResize,
+                autoSizeToContent: autoSizeToContent,
                 panelContent: panelContent
             )
         )
@@ -88,6 +104,7 @@ private struct MacFloatingPanelModifier<PanelContent: View>: ViewModifier {
     let defaultSize: CGSize?
     let allowMove: Bool
     let allowResize: Bool
+    let autoSizeToContent: Bool
     let panelContent: () -> PanelContent
 
     @Environment(\.floatingPanelStyle) private var floatingPanelStyle
@@ -144,6 +161,7 @@ private struct MacFloatingPanelModifier<PanelContent: View>: ViewModifier {
             style: floatingPanelStyle,
             allowMove: allowMove,
             allowResize: allowResize,
+            autoSizeToContent: autoSizeToContent,
             sourceViewFrameInScreen: $sourceViewFrameInScreen,
             presentationAnchorInSourceView: $presentationAnchorInSourceView,
             onClose: {
@@ -190,6 +208,7 @@ private struct IOSFloatingPanelModifier<PanelContent: View>: ViewModifier {
     let defaultSize: CGSize?
     let allowMove: Bool
     let allowResize: Bool
+    let autoSizeToContent: Bool
     let panelContent: () -> PanelContent
 
     @Environment(\.floatingPanelStyle) private var floatingPanelStyle
@@ -249,6 +268,7 @@ private struct IOSFloatingPanelModifier<PanelContent: View>: ViewModifier {
             style: floatingPanelStyle,
             allowMove: allowMove,
             allowResize: allowResize,
+            autoSizeToContent: autoSizeToContent,
             sourceViewFrameInWindow: $sourceViewFrameInWindow,
             presentationAnchorInWindow: $presentationAnchorInWindow,
             onClose: {
